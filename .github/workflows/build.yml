@@ -1,0 +1,65 @@
+
+name: Build CSVMerger Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Download source code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Check Rust project
+        run: cargo check --target x86_64-pc-windows-msvc
+
+      - name: Compile Windows executable
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Package application
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package
+
+          Copy-Item `
+            target/x86_64-pc-windows-msvc/release/csv-merger.exe `
+            package/CSVMerger.exe
+
+          @"
+          CSVMerger - Windows x64
+
+          Requirements:
+          - Windows 10 or Windows 11 x64
+          - 7-Zip installed
+
+          Usage:
+          CSVMerger.exe input.7z output.csv 6
+
+          You can specify the full path to 7z.exe
+          as the fourth argument.
+          "@ | Set-Content package/README.txt
+
+          Compress-Archive `
+            -Path package/* `
+            -DestinationPath CSVMerger-Windows.zip `
+            -Force
+
+      - name: Upload Windows ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: CSVMerger-Windows
+          path: CSVMerger-Windows.zip
+          retention-days: 14
