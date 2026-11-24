@@ -1,4 +1,3 @@
-
 use anyhow::{anyhow, bail, Context, Result};
 use crossbeam_channel::{bounded, Sender};
 use csv::{ReaderBuilder, StringRecord, WriterBuilder};
@@ -23,6 +22,7 @@ use walkdir::WalkDir;
 
 const BATCH_SIZE: usize = 4096;
 const CHANNEL_CAPACITY: usize = 32;
+const TARGET_FOLDER: &str = "03_kbtg_results";
 
 struct Config {
     archive: PathBuf,
@@ -131,12 +131,14 @@ fn extract_archive(
     println!("\n[2/5] Extracting archive...");
 
     let destination = format!("-o{}", temp.path().display());
+    let include_path = format!("{TARGET_FOLDER}\\*");
 
     run_7zip(
         &config.seven_zip,
         &[
             std::ffi::OsStr::new("x"),
             config.archive.as_os_str(),
+            std::ffi::OsStr::new(&include_path),
             std::ffi::OsStr::new(&destination),
             std::ffi::OsStr::new("-y"),
             std::ffi::OsStr::new("-bd"),
@@ -173,7 +175,7 @@ fn discover_csv(root: &Path) -> Result<Vec<PathBuf>> {
     files.sort();
 
     if files.is_empty() {
-        bail!("No CSV files found in archive");
+        bail!("No CSV files found in {}", root.display());
     }
 
     Ok(files)
@@ -491,6 +493,22 @@ fn main() -> Result<()> {
     extract_archive(&config, &temp_dir)?;
 
     let files = discover_csv(temp_dir.path())?;
+    let target_root = WalkDir::new(temp_dir.path())
+        .into_iter()
+        .filter_map(Result::ok)
+        .find(|e| {
+            e.file_type().is_dir()
+                && e.file_name()
+                    .to_string_lossy()
+                    .eq_ignore_ascii_case(TARGET_FOLDER)
+        })
+        .map(|e| e.into_path())
+        .ok_or_else(|| anyhow!(
+            "Folder '{}' not found inside archive",
+            TARGET_FOLDER
+        ))?;
+
+    let files = discover_csv(&target_root)?;    
 
     println!("  Found {} CSV files", files.len());
 
